@@ -118,7 +118,7 @@ func (s *Server) Authenticate(ctx *RPCContext, secretID string) (*structs.Authen
 }
 
 func (s *Server) ResolveACL(aclToken *structs.ACLToken) (*acl.ACL, error) {
-	if !s.config.ACLEnabled {
+	if !s.config.ACLEnabled || aclToken == nil {
 		return nil, nil
 	}
 	snap, err := s.fsm.State().Snapshot()

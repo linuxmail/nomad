@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/go-memdb"
 
 	"github.com/hashicorp/nomad/acl"
-	"github.com/hashicorp/nomad/helper"
 	"github.com/hashicorp/nomad/nomad/state"
 	"github.com/hashicorp/nomad/nomad/state/paginator"
 	"github.com/hashicorp/nomad/nomad/structs"
@@ -35,6 +34,13 @@ func NewVariablesEndpoint(srv *Server, ctx *RPCContext, enc *Encrypter) *Variabl
 
 // Apply is used to apply a SV update request to the data store.
 func (sv *Variables) Apply(args *structs.VariablesApplyRequest, reply *structs.VariablesApplyResponse) error {
+
+	identity, err := sv.srv.Authenticate(sv.ctx, args.AuthToken)
+	if err != nil {
+		return structs.ErrPermissionDenied
+	}
+	args.SetIdentity(identity)
+
 	if done, err := sv.srv.forward(structs.VariablesApplyRPCMethod, args, args, reply); done {
 		return err
 	}
@@ -219,12 +225,19 @@ func (sv *Variables) makeVariablesApplyResponse(
 
 // Read is used to get a specific variable
 func (sv *Variables) Read(args *structs.VariablesReadRequest, reply *structs.VariablesReadResponse) error {
+
+	identity, err := sv.srv.Authenticate(sv.ctx, args.AuthToken)
+	if err != nil {
+		return structs.ErrPermissionDenied
+	}
+	args.SetIdentity(identity)
+
 	if done, err := sv.srv.forward(structs.VariablesReadRPCMethod, args, args, reply); done {
 		return err
 	}
 	defer metrics.MeasureSince([]string{"nomad", "variables", "read"}, time.Now())
 
-	_, _, err := sv.handleMixedAuthEndpoint(args.QueryOptions,
+	_, _, err = sv.handleMixedAuthEndpoint(args.QueryOptions,
 		acl.PolicyRead, args.Path)
 	if err != nil {
 		return err
@@ -264,6 +277,12 @@ func (sv *Variables) List(
 	args *structs.VariablesListRequest,
 	reply *structs.VariablesListResponse) error {
 
+	identity, err := sv.srv.Authenticate(sv.ctx, args.AuthToken)
+	if err != nil {
+		return structs.ErrPermissionDenied
+	}
+	args.SetIdentity(identity)
+
 	if done, err := sv.srv.forward(structs.VariablesListRPCMethod, args, args, reply); done {
 		return err
 	}
@@ -275,10 +294,11 @@ func (sv *Variables) List(
 		return sv.listAllVariables(args, reply)
 	}
 
-	aclObj, claims, err := sv.authenticate(args.QueryOptions)
+	aclObj, err := sv.srv.ResolveACL(args.GetIdentity().GetACLToken())
 	if err != nil {
 		return err
 	}
+	claims := args.GetIdentity().GetClaims()
 
 	// Set up and return the blocking query.
 	return sv.srv.blockingRPC(&blockingOptions{
@@ -359,10 +379,11 @@ func (sv *Variables) listAllVariables(
 
 	// Perform token resolution. The request already goes through forwarding
 	// and metrics setup before being called.
-	aclObj, claims, err := sv.authenticate(args.QueryOptions)
+	aclObj, err := sv.srv.ResolveACL(args.GetIdentity().GetACLToken())
 	if err != nil {
 		return err
 	}
+	claims := args.GetIdentity().GetClaims()
 
 	// Set up and return the blocking query.
 	return sv.srv.blockingRPC(&blockingOptions{
@@ -467,41 +488,18 @@ func (sv *Variables) decrypt(v *structs.VariableEncrypted) (*structs.VariableDec
 // either be called by external clients or by workload identity
 func (sv *Variables) handleMixedAuthEndpoint(args structs.QueryOptions, cap, pathOrPrefix string) (*acl.ACL, *structs.IdentityClaims, error) {
 
-	aclObj, claims, err := sv.authenticate(args)
+	aclObj, err := sv.srv.ResolveACL(args.GetIdentity().GetACLToken())
 	if err != nil {
-		return aclObj, claims, err
+		return nil, nil, err
 	}
+	claims := args.GetIdentity().GetClaims()
+
 	err = sv.authorize(aclObj, claims, args.RequestNamespace(), cap, pathOrPrefix)
 	if err != nil {
 		return aclObj, claims, err
 	}
 
 	return aclObj, claims, nil
-}
-
-func (sv *Variables) authenticate(args structs.QueryOptions) (*acl.ACL, *structs.IdentityClaims, error) {
-
-	// Perform the initial token resolution.
-	aclObj, err := sv.srv.ResolveToken(args.AuthToken)
-	if err == nil {
-		return aclObj, nil, nil
-	}
-	if helper.IsUUID(args.AuthToken) {
-		// early return for ErrNotFound or other errors if it's formed
-		// like an ACLToken.SecretID
-		return nil, nil, err
-	}
-
-	// Attempt to verify the token as a JWT with a workload
-	// identity claim
-	claims, err := sv.srv.VerifyClaim(args.AuthToken)
-	if err != nil {
-		metrics.IncrCounter([]string{
-			"nomad", "variables", "invalid_allocation_identity"}, 1)
-		sv.logger.Trace("allocation identity was not valid", "error", err)
-		return nil, nil, structs.ErrPermissionDenied
-	}
-	return nil, claims, nil
 }
 
 func (sv *Variables) authorize(aclObj *acl.ACL, claims *structs.IdentityClaims, ns, cap, pathOrPrefix string) error {

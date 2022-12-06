@@ -108,9 +108,20 @@ func TestVariablesEndpoint_auth(t *testing.T) {
 
 	variablesRPC := NewVariablesEndpoint(srv, nil, srv.encrypter)
 
+	testFn := func(args *structs.QueryOptions, cap, path string) error {
+		identity, err := srv.Authenticate(nil, args.AuthToken)
+		if err != nil {
+			return structs.ErrPermissionDenied
+		}
+		args.SetIdentity(identity)
+		_, _, err = variablesRPC.handleMixedAuthEndpoint(
+			*args, cap, path)
+		return err
+	}
+
 	t.Run("terminal alloc should be denied", func(t *testing.T) {
-		_, _, err := variablesRPC.handleMixedAuthEndpoint(
-			structs.QueryOptions{AuthToken: idToken, Namespace: ns}, acl.PolicyList,
+		err := testFn(
+			&structs.QueryOptions{AuthToken: idToken, Namespace: ns}, acl.PolicyList,
 			fmt.Sprintf("nomad/jobs/%s/web/web", jobID))
 		must.EqError(t, err, structs.ErrPermissionDenied.Error())
 	})
@@ -121,8 +132,8 @@ func TestVariablesEndpoint_auth(t *testing.T) {
 		structs.MsgTypeTestSetup, 1200, []*structs.Allocation{alloc1}))
 
 	t.Run("wrong namespace should be denied", func(t *testing.T) {
-		_, _, err := variablesRPC.handleMixedAuthEndpoint(
-			structs.QueryOptions{AuthToken: idToken, Namespace: structs.DefaultNamespace}, acl.PolicyList,
+		err := testFn(&structs.QueryOptions{
+			AuthToken: idToken, Namespace: structs.DefaultNamespace}, acl.PolicyList,
 			fmt.Sprintf("nomad/jobs/%s/web/web", jobID))
 		must.EqError(t, err, structs.ErrPermissionDenied.Error())
 	})
@@ -351,8 +362,9 @@ func TestVariablesEndpoint_auth(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := variablesRPC.handleMixedAuthEndpoint(
-				structs.QueryOptions{AuthToken: tc.token, Namespace: ns}, tc.cap, tc.path)
+			err := testFn(
+				&structs.QueryOptions{AuthToken: tc.token, Namespace: ns},
+				tc.cap, tc.path)
 			if tc.expectedErr == nil {
 				must.NoError(t, err)
 			} else {

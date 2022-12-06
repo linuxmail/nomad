@@ -29,6 +29,13 @@ func NewDeploymentEndpoint(srv *Server, ctx *RPCContext) *Deployment {
 // GetDeployment is used to request information about a specific deployment
 func (d *Deployment) GetDeployment(args *structs.DeploymentSpecificRequest,
 	reply *structs.SingleDeploymentResponse) error {
+
+	identity, err := d.srv.Authenticate(d.ctx, args.AuthToken)
+	if err != nil {
+		return structs.ErrPermissionDenied
+	}
+	args.SetIdentity(identity)
+
 	if done, err := d.srv.forward("Deployment.GetDeployment", args, args, reply); done {
 		return err
 	}
@@ -36,7 +43,7 @@ func (d *Deployment) GetDeployment(args *structs.DeploymentSpecificRequest,
 
 	// Check namespace read-job permissions
 	allowNsOp := acl.NamespaceValidator(acl.NamespaceCapabilityReadJob)
-	aclObj, err := d.srv.ResolveToken(args.AuthToken)
+	aclObj, err := d.srv.ResolveACL(args.GetIdentity().GetACLToken())
 	if err != nil {
 		return err
 	} else if !allowNsOp(aclObj, args.RequestNamespace()) {
