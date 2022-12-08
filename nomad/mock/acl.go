@@ -245,3 +245,18 @@ func ACLAuthMethod() *structs.ACLAuthMethod {
 	method.SetHash()
 	return &method
 }
+
+func ACLBindingRule() *structs.ACLBindingRule {
+	return &structs.ACLBindingRule{
+		ID:          uuid.Short(),
+		Description: "mocked-acl-binding-rule",
+		AuthMethod:  "auth0",
+		Selector:    "engineering in list.roles",
+		BindType:    "role",
+		BindName:    "eng-ro",
+		CreateTime:  time.Now().UTC(),
+		ModifyTime:  time.Now().UTC(),
+		CreateIndex: 10,
+		ModifyIndex: 10,
+	}
+}
