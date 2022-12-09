@@ -1996,6 +1996,7 @@ func (a *ACL) WhoAmI(args *structs.GenericRequest, reply *structs.ACLWhoAmIRespo
 		return err
 	}
 	args.SetIdentity(identity)
+	a.srv.MeasureRPCRate("acl", structs.RateMetricRead, identity, a.ctx)
 
 	if done, err := a.srv.forward("ACL.WhoAmI", args, args, reply); done {
 		return err

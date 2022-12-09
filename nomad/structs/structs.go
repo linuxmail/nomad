@@ -188,6 +188,11 @@ const (
 	// DefaultBlockingRPCQueryTime is the amount of time we block waiting for a change
 	// if no time is specified. Previously we would wait the MaxBlockingRPCQueryTime.
 	DefaultBlockingRPCQueryTime = 300 * time.Second
+
+	// RateMetric constants are used as labels in RPC rate metrics
+	RateMetricRead  = "read"
+	RateMetricList  = "list"
+	RateMetricWrite = "write"
 )
 
 var (
@@ -463,7 +468,6 @@ type AuthenticatedIdentity struct {
 	ACLToken *ACLToken
 	Claims   *IdentityClaims
 	ClientID string
-	ServerID string
 	TLSName  string
 	RemoteIP net.IP
 }
@@ -480,6 +484,22 @@ func (ai *AuthenticatedIdentity) GetClaims() *IdentityClaims {
 		return nil
 	}
 	return ai.Claims
+}
+
+func (ai *AuthenticatedIdentity) String() string {
+	if ai == nil {
+		return "unauthenticated"
+	}
+	if ai.ACLToken != nil {
+		return fmt.Sprintf("token:%s", ai.ACLToken.AccessorID)
+	}
+	if ai.Claims != nil {
+		return fmt.Sprintf("alloc:%s", ai.Claims.AllocationID)
+	}
+	if ai.ClientID != "" {
+		return fmt.Sprintf("client:%s", ai.ClientID)
+	}
+	return fmt.Sprintf("%s:%s", ai.TLSName, ai.RemoteIP.String())
 }
 
 // QueryMeta allows a query response to include potentially
