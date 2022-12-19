@@ -126,22 +126,6 @@ vault {
 }
 ```
 
-### Nomad Client
-
-This example shows an example Vault configuration for a Nomad client:
-
-```hcl
-vault {
-  enabled     = true
-  address     = "https://vault.service.consul:8200"
-  ca_path     = "/etc/certs/ca"
-  cert_file   = "/var/certs/vault.crt"
-  key_file    = "/var/certs/vault.key"
-}
-```
-
-The key difference is that the token is not necessary on the client.
-
 ## `vault` Configuration Reloads
 
 The Vault configuration can be reloaded on servers. This can be useful if a new
